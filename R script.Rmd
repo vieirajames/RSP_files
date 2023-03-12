@@ -1,0 +1,459 @@
+
+## Start
+```{r}
+# clean database
+rm(list=ls())
+
+#scientific notation
+options(scipen=999)
+
+# for consistent results
+set.seed(123)
+```
+
+## packages
+```{r}
+install.packages("haven")
+install.packages("gplots")
+install.packages("summarytools")
+install.packages("corrplot")
+install.packages("dplyr")
+install.packages("coin")
+install.packages("clinfun")
+install.packages("gvlma")
+install.packages("lmtest")
+install.packages("tseries")
+install.packages("AER")
+install.packages("car")
+install.packages("stargazer")
+install.packages("ResourceSelection")
+install.packages("MASS")
+install.packages("pscl")
+install.packages("kableExtra")
+install.packages("MatchIt")
+install.packages("ggplot2")
+install.packages("Hmisc")
+```
+
+## Open data base
+```{r}
+library(haven)
+instrumental3 <- read_sav("C:/Users/vieir/Desktop/Artigos (em progresso)/Artigo RAP/Submission/instrumental3.sav")
+View(instrumental3)
+```
+
+################ Exploratory Analysis
+```{r}
+library(summarytools)
+summarytools::descr(instrumental3)
+
+#Shapiro-Wilk normality test
+shapiro.test(instrumental3$corruption)
+
+### The null hypothesis for this test is that the data are normally distributed. The Prob < W value listed in the output is the p-value. If the chosen alpha level is 0.05 and the p-value is less than 0.05, then the null hypothesis that the data are normally distributed is rejected. If the p-value is greater than 0.05, then the null hypothesis is not rejected.
+
+#correlations
+library(corrplot)
+i_col <- sapply(instrumental3, class) %in% c("integer", "numeric");cor(instrumental3[which(i_col)])
+corr_matrix <- cor(instrumental3)
+corrplot(corr_matrix, type= "upper")
+```
+
+
+############################### Methodology
+```{r}
+library("gplots")
+plotmeans(corruption ~ social_accountability, data = instrumental3, frame = FALSE,
+          xlab = "Treatment", ylab = "Weight",
+          main="Mean Plot with 95% CI") 
+
+library(dplyr)
+instrumental3 %>%
+  group_by(region) %>%
+  summarise(n_municip = n (),
+            mean(corruption),
+            std_error = sd (corruption) / sqrt(n_municip))
+
+instrumental3 %>%
+  group_by(size) %>%
+  summarise(n_municip = n (),
+            mean(corruption),
+            std_error = sd (corruption) / sqrt(n_municip))
+
+library(coin)
+kruskal.test(corruption ~ region, data = instrumental3)
+wilcox.test(corruption ~ size, data = instrumental3)
+
+
+# 5 regiões para size==0
+reg01_size00 <- instrumental3 %>% filter(region==1&size==0)
+reg02_size00 <- instrumental3 %>% filter(region==2&size==0)
+reg03_size00 <- instrumental3 %>% filter(region==3&size==0)
+reg04_size00 <- instrumental3 %>% filter(region==4&size==0)
+reg05_size00 <- instrumental3 %>% filter(region==5&size==0)
+
+kruskal.test(corruption ~ social_accountability, data = reg01_size00)
+kruskal.test(corruption ~ social_accountability, data = reg02_size00)
+kruskal.test(corruption ~ social_accountability, data = reg03_size00)
+kruskal.test(corruption ~ social_accountability, data = reg04_size00)
+kruskal.test(corruption ~ social_accountability, data = reg05_size00)
+
+# 5 regiões para size==1
+reg01_size01 <- instrumental3 %>% filter(region==1&size==1)
+reg02_size01 <- instrumental3 %>% filter(region==2&size==1)
+reg03_size01 <- instrumental3 %>% filter(region==3&size==1)
+reg04_size01 <- instrumental3 %>% filter(region==4&size==1)
+reg05_size01 <- instrumental3 %>% filter(region==5&size==1)
+
+kruskal.test(corruption ~ social_accountability, data = reg01_size01)
+kruskal.test(corruption ~ social_accountability, data = reg02_size01)
+kruskal.test(corruption ~ social_accountability, data = reg03_size01)
+kruskal.test(corruption ~ social_accountability, data = reg04_size01)
+kruskal.test(corruption ~ social_accountability, data = reg05_size01)
+```
+
+
+################################ Initial Results
+```{r}
+library(dplyr)
+instrumental3 %>%
+  group_by(social_accountability) %>%
+  summarise(n_municip = n (),
+            mean(corruption),
+            std_error = sd (corruption) / sqrt(n_municip))
+### I later transform in dichotomous variable (0+1+2 = 0 // 3+4 = 1)
+
+library(coin)
+wilcox.test(corruption ~ social_accountability_dic, data = instrumental3)
+kruskal.test(corruption ~ social_accountability, data = instrumental3)
+### The Kruskal–Wallis test by ranks, Kruskal–Wallis H test (named after William Kruskal and W. Allen Wallis), or one-way ANOVA on ranks is a non-parametric method for testing whether samples originate from the same distribution. It is used for comparing two or more independent samples of equal or different sample sizes. It extends the Mann–Whitney U test, which is used for comparing only two groups.
+
+library(clinfun)
+x <- c(instrumental3$corruption)
+y <- c(instrumental3$social_accountability)
+jonckheere.test(x, y)
+### The Jonckheere-Terpstra test is a rank-based nonparametric test that can be used to determine if there is a statistically significant trend between an ordinal independent variable and a continuous or ordinal dependent variable. It is a test of distributional "locations", or stochastic prevalence.
+
+```
+
+
+#################################  NAIVE MODEL(OLS Regression)
+```{r}
+naive <- lm(corruption ~ social_accountability_dic + SO + south + southeast + midwest 
+                 + north +  size, data = instrumental3)
+naive1 <- lm(corruption ~ social_accountability + SO + south + southeast + midwest 
+                 + north +  size, data = instrumental3)
+#confidence interval
+confint(naive,level=0.90)
+confint(naive1,level=0.90)
+
+library(gvlma)
+gvlma::gvlma(naive)
+
+#heteroscedasticity
+library(lmtest)
+bptest(naive, studentize=FALSE)
+bptest(naive1, studentize=FALSE)
+
+#normality
+hist(naive$residuals,xlab="Residuals",main="")
+hist(naive1$residuals,xlab="Residuals",main="")
+
+qqnorm(naive$residuals)
+qqline(naive$residuals, col="red")
+
+qqnorm(naive1$residuals)
+qqline(naive1$residuals, col="red")
+
+#Jarque–Bera test
+library(tseries)
+jarque.bera.test(naive$residuals)
+jarque.bera.test(naive1$residuals)
+## we reject the null hypothesis and conclude that the residuals are not normally distributed. 
+# functional form
+plot(y=naive$residuals,x=naive$fitted.values, xlab="Fitted Values",ylab="Residuals")
+plot(y=naive1$residuals,x=naive1$fitted.values, xlab="Fitted Values",ylab="Residuals")
+
+# multicolineariety
+library(AER)
+vif(naive)
+sqrt(vif(naive))
+1/vif(naive)
+
+vif(naive1)
+sqrt(vif(naive1))
+1/vif(naive1)
+
+#outliers
+library(car)
+avPlots(naive)
+avPlots(naive1)
+
+#DFBetas (outliers test)
+dfbetas(naive)
+obj_anything <- dfbetas(naive)
+View(obj_anything)
+
+dfbetasPlots(naive)
+dfbetaPlots(naive, id.method = "y", id.n = 1)
+dfbetaPlots(naive, id.method = "identify")
+
+dfbetas(naive1)
+obj_anything1 <- dfbetas(naive1)
+View(obj_anything1)
+
+dfbetasPlots(naive1)
+dfbetaPlots(naive1, id.method = "y", id.n = 1)
+dfbetaPlots(naive1, id.method = "identify")
+
+#Outliers, Leverage, and Influential Data Points
+influenceIndexPlot(naive, vars=c("Cook","Studentized","hat"),id.n=5)
+
+library(stargazer)
+stargazer(naive1, naive, type= "text", out="1_naive.html")
+```
+
+
+############################## Generalized Linear Model
+```{r}
+## Exploring
+xtabs(~corruption_dic + social_accountability_dic, data = instrumental3)
+
+#Logit model (dummy)
+mylogit3 <- glm(corruption_dic ~ social_accountability_dic + SO + south + southeast + midwest + north + size, data = instrumental3, family = binomial(link="logit"))
+summary(mylogit3)
+confint(mylogit3)
+confint.default(mylogit3)
+
+library(stargazer)
+stargazer(mylogit3, type= "text", out="1_logistic.doc")
+
+## odds-ratios (and confidence intervals column-wise)
+exp(coef(mylogit3))
+exp(cbind(OR = coef(mylogit3), confint(mylogit3)))
+
+#regression model fit
+library(ResourceSelection)
+hoslem.test(instrumental3$corruption_dic, fitted(mylogit3))
+
+#Poisson Regression
+corruption.poisson<-glm(corruption ~ social_accountability_dic + SO + south + southeast + midwest 
+                 + north + size, family=poisson(link=log),data=instrumental3)
+summary(corruption.poisson)
+
+# Negative Binomial Regression
+library(MASS)
+corruption.binominal<-glm.nb(corruption ~ social_accountability_dic + SO + south + southeast + midwest 
+                 + north +  size, data=instrumental3)
+summary(corruption.binominal)
+
+#graphs
+library(stats4)
+forecast.nb<-predict(corruption.binominal, type="response")
+forecast.poisson<-predict(corruption.poisson,type="response")
+
+#Zero-inflated negative binomial regression 
+library(pscl)
+corruption.zero <- zeroinfl(corruption ~ social_accountability_dic + SO + south + southeast + midwest 
+                 + north +  size, data = instrumental3, dist = "negbin")
+summary(corruption.zero)
+
+#Vuong test
+vuong(corruption.poisson, corruption.zero)
+## The Vuong test compares the zero-inflated model with an ordinary Poisson regression model. We can see that our test statistic is significant, indicating that the zero-inflated model is superior to the standard Poisson model.
+
+library(stargazer)
+stargazer(naive, mylogit3, corruption.poisson, corruption.binominal, corruption.zero, type= "text", out="1_glm.html")
+```
+
+
+####################################### MATCHING (EXACT)
+```{r}
+### Data Prep and EDA
+library(dplyr)
+instrumental3 %>%
+  group_by(social_accountability_dic) %>%
+  summarise(n_municip = n (),
+            mean(corruption),
+            std_error = sd (corruption) / sqrt(n_municip))
+### NATE
+t.test(instrumental3$corruption ~ instrumental3$social_accountability_dic)
+
+### Balance Table
+library(kableExtra)
+instrumental3 %>%
+  group_by(social_accountability_dic) %>%
+  summarise_all(funs(mean(., na.rm = T))) %>% 
+  t() %>% 
+  as.data.frame() %>% 
+  add_rownames("variable") %>% 
+  rename(Less_CS = V1, More_CS = V2) %>% 
+  mutate(difference = More_CS - Less_CS,
+         differencePerc = difference / (More_CS + Less_CS)) %>% 
+  mutate_if(is.numeric, round, 3) %>% 
+  kable() %>%
+  kable_styling() 
+
+### Exploring MatchIt
+library(MatchIt)
+exact_match <- matchit(social_accountability_dic ~ SO + size + south + southeast + midwest 
+                 + north + northeast, method = "exact",data = instrumental3, ratio = 1)
+summary(exact_match)
+
+# grab the matched data
+exact_matchCSV = match.data(exact_match) 
+write.csv(exact_matchCSV, "exact_match.csv")
+
+data_exact_match <- match.data(exact_match)
+
+## a dataframe containing only the matched observations
+dta_m <- match.data(data_exact_match)
+dim(dta_m)
+
+# estimate t-test again
+t.test(data_exact_match$corruption ~ data_exact_match$social_accountability_dic)
+
+## the direction and magnitude of the covariate effects using a  linear model:
+lm_exact <- lm(corruption ~ social_accountability_dic + SO + south + southeast + midwest 
+                 + north + northeast + size, data = data_exact_match)
+summary(lm_exact)
+
+# estimate logit model
+m_ps <- glm(social_accountability_dic ~ SO + south + southeast + midwest 
+                 + north + northeast + size, family = binomial(), data = instrumental3)
+summary(m_ps)
+
+# extract predicted probabilities
+# type = "response" option tells R to output probabilities of the form P(Y = 1|X)
+library(ggplot2)
+prs_df <- data.frame(pr_score = predict(m_ps, type = "response"),
+                     social_accountability_dic = m_ps$model$social_accountability_dic) # the actual values
+prs_df %>%
+ ggplot(aes(x = pr_score, fill = factor(social_accountability_dic))) +
+  geom_density(alpha = 0.1) +
+  labs(x = "Propensity Score Distribution: Treatment and Control Groups",
+       fill = "Social Accountability")
+```
+
+##################################  MATCHING (Nearest)
+```{r}
+one_match <- matchit(social_accountability_dic ~ SO + south + southeast + midwest 
+                 + north + northeast + size, method = "optimal", ratio = 1, replace = FALSE, data = instrumental3)
+summary(one_match)
+
+# simple plot
+plot(one_match, type="jitter")
+plot(one_match, type = "hist")
+
+# grab data set
+data_prop_match <- match.data(one_match)
+
+# check balance
+data_prop_match %>%
+  group_by(social_accountability_dic) %>%
+  summarise_all(funs(mean)) %>%
+  t() %>% 
+  as.data.frame() %>% 
+  add_rownames("variable") %>% 
+  rename(no_CS = V1, CS = V2) %>% 
+  mutate(difference = CS - no_CS,
+         differencePerc = difference / (CS + no_CS)) %>% 
+  mutate_if(is.numeric, round, 3) %>% 
+  kable() %>% 
+  kable_styling()
+
+## estimate the treatment effect on the matched data set:
+t.test(data_prop_match$corruption ~ data_prop_match$social_accountability_dic)
+
+## the direction and magnitude of the covariate effects using a simple linear model:
+lm_matched <- lm(corruption ~ social_accountability_dic + SO + south + southeast + midwest 
+                 + north + northeast + size, data = data_prop_match)
+summary(lm_matched)
+```
+
+############################### Matching comparative Analysis
+```{r}
+library(stargazer)
+stargazer(lm_exact, lm_matched, type= "text", out="1_matching.html")
+```
+
+
+####################################### INTRUMENTAL VARIABLE
+## Correlations
+```{r}
+library(Hmisc)
+mydata.rcorr = rcorr(as.matrix(instrumental3))
+mydata.rcorr
+
+mydata.coeff = mydata.rcorr$r
+mydata.p = mydata.rcorr$P
+
+## correlation plot
+library(corrplot)
+corrplot(mydata.coeff)
+
+### regression (corruption_dic ~ k_social)
+ivp3 <- lm(corruption_dic ~ K_social + SO + size + south + southeast + midwest 
+                 + north, data = instrumental3)
+summary(ivp3)
+
+### regression (social_accountability ~ k_social)
+ivp4 <- lm(social_accountability_dic ~ K_social, data = instrumental3)
+stargazer(ivp3, ivp4, type= "text", out="ivp.html")
+summary(ivp4)
+```
+
+### Exploring our results (table)
+```{r}
+library(summarytools)
+st_options(footnote = NA)
+print(ctable(instrumental3$social_accountability_dic, instrumental3$K_social, prop = "n"), method = "pander") 
+
+print(ctable(x = instrumental3$social_accountability_dic, y = instrumental3$K_social, prop = "r"), method = "pander")
+```
+
+### Exploring our results (graphs)
+```{r}
+library(ggplot2)
+ggplot(instrumental3, aes(x = factor(K_social), y = factor(social_accountability_dic), 
+                         color = factor(corruption_dic))) + geom_point() + 
+  geom_jitter() + theme_minimal() + scale_x_discrete(labels = c("KS = 0", "KS = 1")) +
+  scale_y_discrete(labels = c("CS = 0", "CS = 1")) +
+  labs(x = "Encouragement", y = "Treatment", color = "")
+```
+
+#LATE model
+```{r}
+library(AER)
+late_model <- ivreg(corruption ~ social_accountability_dic + SO + size + south + southeast + midwest 
+                 + north | K_social + SO + size + south + southeast + midwest 
+                 + north, data = instrumental3)
+summary(late_model)
+```
+
+```{r}
+library(dplyr)
+instrumental3 %>% group_by(K_social) %>% summarise(mean(social_accountability_dic, na.rm=T))
+
+```
+
+```{r}
+treat_en_model <- lm(social_accountability_dic ~ K_social, data= instrumental3)
+summary(treat_en_model)
+```
+
+#IV summary
+```{r}
+library(stargazer)
+stargazer(late_model, type= "text", out="1_IV.html")
+```
+
+
+```{r}
+library(stargazer)
+stargazer(naive, late_model, type= "text", out="2_All.html")
+```
+
+
+
+
